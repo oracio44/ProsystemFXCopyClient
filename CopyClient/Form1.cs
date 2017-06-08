@@ -179,8 +179,8 @@ namespace WindowsFormsApplication1
             string sRebuild, sLabel = "";
             string line, sClientFile;
             bool bLineE = false;
-            List<string> sError = new List<string>();
             sRebuild = sWFX32 + "\\DATABASE\\Rebuild.log";
+            LinkedList<string> slError = new LinkedList<string>();
             try
             {
                 listBox1.Items.Clear();
@@ -198,7 +198,7 @@ namespace WindowsFormsApplication1
                         if (bLineE == true)
                         {
                             sLabel = sLabel + line.Substring(9);
-                            sError.Add(sLabel);
+                            slError.AddLast(sLabel);
                             bLineE = false;
                         }
                         //Start reading line, only Error lines will be reported, this should not happen if as a second line
@@ -217,7 +217,7 @@ namespace WindowsFormsApplication1
                             }
                             //if not flagged for a second line incoming, add line to string list
                             else
-                                sError.Add(sLabel);
+                                slError.AddLast(sLabel);
                         }
                         progressBar1.Value++;
                     }
@@ -225,10 +225,10 @@ namespace WindowsFormsApplication1
                 file.Close();
                 //Reset progress bar for next process, if no errors are returned, still setup progress bar for 1 maximum
                 progressBar1.Value = 0;
-                progressBar1.Maximum = sError.Count() + 1;
+                progressBar1.Maximum = slError.Count + 1;
                 sLabel = "";
                 //Process each error line
-                foreach (string s in sError)
+                foreach (string s in slError)
                 {
                     //Check if error is of expected format for this program to handle
                     if (s.Contains("Cannot revise to 2005"))
@@ -255,10 +255,11 @@ namespace WindowsFormsApplication1
                 //Hide progress bar now that process is complete
                 progressBar1.Visible = false;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 MessageBox.Show(ex.ToString());
             }
+
         }
 
         //Move clients unable to revise to repository for storage and out of production
