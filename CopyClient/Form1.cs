@@ -120,7 +120,6 @@ namespace WindowsFormsApplication1
                     sFileName = wfxNewBin + sFileName;
                     File.Copy(sFilePath, sFileName, true);
                     bFound = true;
-                    Thread.Sleep(1000);
                 }
             });
             foreach (string s in slFiles)
