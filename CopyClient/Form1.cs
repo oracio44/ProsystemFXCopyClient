@@ -184,8 +184,9 @@ namespace WindowsFormsApplication1
             }
         }
 
-        private void btnCopy_Click(object sender, EventArgs e)
+        private async void btnCopy_Click(object sender, EventArgs e)
         {
+            bool searchsub;
             btRebuild.Enabled = false;
             btnCopy.Enabled = false;
             button2.Enabled = false;
@@ -199,7 +200,8 @@ namespace WindowsFormsApplication1
             for (int i = 0; i<listBox1.Items.Count; i++)
             {
                 progressBar1.Value++;
-                if(!SearchSub(listBox1.Items[i].ToString()))
+                searchsub = await SearchSubAsync(listBox1.Items[i].ToString());
+                if(!searchsub)
                     sNone = sNone + listBox1.Items[i] + "\n";
             }
             //Progressbar will be >0 if at least 1 file was attempted, report completed
