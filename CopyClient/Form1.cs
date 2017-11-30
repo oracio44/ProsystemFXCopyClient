@@ -5,6 +5,8 @@ using System.Text;
 using System.IO;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace WindowsFormsApplication1
 {
@@ -87,6 +89,48 @@ namespace WindowsFormsApplication1
             return strFileName;
         }
 
+        async Task<bool> SearchSubAsync(string ClientCode)
+        {
+            string wfxNewBin = sWFX32 + "\\commun\\newbin\\";
+            string wfxClient = sWFX32 + "\\client";
+            string FileName = ClientCode + "*.U*";
+            string sFilePath, sFileName;
+            List<string> slFiles = new List<string>();
+            bool bFound = false;
+
+            await Task.Run(() =>
+            {
+                //Search for .U files using a provided client code in client directory
+                foreach (string f in Directory.GetFiles(wfxClient, FileName, SearchOption.AllDirectories))
+                {
+                    sFilePath = f;
+                    FileInfo fifile = new FileInfo(f);
+                    //check if found .u file is less than 12 KB
+                    if (fifile.Length < 12288)
+                    {
+                        //check for presence of .B file, if none found, return to U file path
+                        sFilePath = f.Replace(".U", ".B");
+                        if (!File.Exists(sFilePath))
+                        {
+                            sFilePath = f;
+                        }
+                    }
+                    sFileName = sFilePath.Substring(sFilePath.LastIndexOf('\\') + 1);
+                    slFiles.Add(sFileName);
+                    sFileName = wfxNewBin + sFileName;
+                    File.Copy(sFilePath, sFileName, true);
+                    bFound = true;
+                    Thread.Sleep(1000);
+                }
+            });
+            foreach (string s in slFiles)
+            {
+                listBox2.Items.Add(s);
+            }
+            //if Returns were found, return true.  If no returns found, return false
+            return bFound;
+        }
+
         bool SearchSub(string ClientCode)
         {
             string wfxNewBin = sWFX32 + "\\commun\\newbin\\";
@@ -141,9 +185,14 @@ namespace WindowsFormsApplication1
             }
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private void btnCopy_Click(object sender, EventArgs e)
         {
-            string sNone = "";
+            btRebuild.Enabled = false;
+            btnCopy.Enabled = false;
+            button2.Enabled = false;
+
+            string sNone = string.Empty;
+            listBox2.Items.Clear();
             progressBar1.Value = 0;
             progressBar1.Maximum = listBox1.Items.Count;
             progressBar1.Visible = true;
@@ -164,6 +213,10 @@ namespace WindowsFormsApplication1
                 MessageBox.Show("Unable to find return files for the following client(s):\n" + sNone);
             }
             progressBar1.Visible = false;
+
+            btRebuild.Enabled = true;
+            btnCopy.Enabled = true;
+            button2.Enabled = true;
         }
 
         //Clear Listbox items
@@ -174,58 +227,118 @@ namespace WindowsFormsApplication1
         }
 
         //Attempt to read Rebuild.log and take action on error files
-        private void btRebuild_Click(object sender, EventArgs e)
+        private async void btRebuild_Click(object sender, EventArgs e)
         {
-            string sRebuild, sLabel = "";
-            string line, sClientFile;
-            bool bLineE = false;
+            listBox1.Items.Clear();
+            listBox2.Items.Clear();
+
+            progressBar1.Visible = true;
+            btRebuild.Enabled = false;
+            btnCopy.Enabled = false;
+            button2.Enabled = false;
+            Progress<int> ProgressIndicator = new Progress<int>(ReportProgress);
+            //Rebuild();
+            await RebuildAsync(ProgressIndicator);
+            btRebuild.Enabled = true;
+            btnCopy.Enabled = true;
+            button2.Enabled = true;
+            progressBar1.Visible = false;
+        }
+
+        private void ReportProgress(int value)
+        {
+            progressBar1.Value = value;
+        }
+
+        private async Task RebuildAsync(IProgress<int> Progress)
+        {
+            string sRebuild, sLabel;
+            string sClientFile;
             sRebuild = sWFX32 + "\\DATABASE\\Rebuild.log";
             LinkedList<string> slError = new LinkedList<string>();
+            List<string> slClients = new List<string>();
+            List<string> slReturns = new List<string>();
+
             try
             {
-                listBox1.Items.Clear();
-                listBox2.Items.Clear();
                 FileStream file = new FileStream(sRebuild, FileMode.Open, FileAccess.Read);
                 using (StreamReader Ereader = new StreamReader(file, Encoding.ASCII))
                 {
-                    //Set progress bar to expected max amount, and start at 0
-                    progressBar1.Value = 0;
-                    progressBar1.Maximum = File.ReadLines(sRebuild).Count();
-                    progressBar1.Visible = true;
-                    while ((line = Ereader.ReadLine()) != null)
+                    //Read the Rebuild.Log file line by line.  Put error messages into slError list
+                    await ReadLogAsync(sRebuild, slError, Ereader, Progress);
+                }
+                file.Close();
+            }
+            catch(Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+                return;
+            }
+            {
+                sLabel = "";
+                bool searchSub;
+                int clientsFound = 0;
+                int MaxLine, ProgressLine = 0;
+                MaxLine = slError.Count;
+                if (MaxLine != 0)
+                {
+                    Progress.Report(++ProgressLine);
+                    foreach (string s in slError)
                     {
-                        // If flagged for second line is true, read a second line and append to current string
-                        if (bLineE == true)
+                        Progress.Report((ProgressLine * 100) / MaxLine);
+                        ProgressLine++;
+                        //Check if error is of expected format for this program to handle
+                        if (s.Contains("Cannot revise to 2005"))
                         {
-                            sLabel = sLabel + line.Substring(9);
-                            slError.AddLast(sLabel);
-                            bLineE = false;
-                        }
-                        //Start reading line, only Error lines will be reported, this should not happen if as a second line
-                        if (line.Contains("ERROR: "))
-                        {
-                            sLabel = line;
-                            //If line is max length, set flag for second line
-                            if (sLabel.Length > 74)
-                                bLineE = true;
-                            sLabel = sLabel.Substring(9);
-                            //if flagged for second line, remove "-" at end of line, and hold off adding to string list
-                            if (bLineE)
+                            //Get file code, move the file to cannot process repository, search for return files, and add items to listbox
+                            sClientFile = GetFileCode(s);
+                            await Task.Run(() => RemoveClient(sClientFile));
+                            if (!listBox1.Items.Contains(sClientFile))
                             {
-                                if (sLabel[sLabel.Length - 1].Equals('-'))
-                                    sLabel = sLabel.Substring(0, sLabel.Length - 1);
+                                listBox1.Items.Add(sClientFile);
+                                clientsFound++;
                             }
-                            //if not flagged for a second line incoming, add line to string list
-                            else
-                                slError.AddLast(sLabel);
+                            searchSub = await SearchSubAsync(sClientFile);
+                            if (!searchSub)
+                                sLabel = sLabel + sClientFile + "\n";
                         }
-                        progressBar1.Value++;
                     }
+                    if (clientsFound > 0)
+                        MessageBox.Show("C00 files moved to " + sWFX32 + "\\client\\CannotRevise \n" + "Return Files copied to " + sWFX32 + "\\commun\\newbin");
+                    if (sLabel.Length > 0)
+                    {
+                        //sLabel = sLabel.Substring(0, sLabel.Length - 2);
+                        MessageBox.Show("Unable to find return files for the following client(s):\n" + sLabel);
+                    }
+                }
+            }
+            /*
+            ProgressState = 0;
+            ProgressMax = slError.Count;
+            Progress.Report(ProgressState);
+            */
+        }
+
+        private void Rebuild()
+        {
+            string sRebuild, sLabel = "";
+            string sClientFile;
+            sRebuild = sWFX32 + "\\DATABASE\\Rebuild.log";
+            LinkedList<string> slError = new LinkedList<string>();
+            List<string> slClients = new List<string>();
+            List<string> slReturns = new List<string>();
+            try
+            {
+                FileStream file = new FileStream(sRebuild, FileMode.Open, FileAccess.Read);
+                using (StreamReader Ereader = new StreamReader(file, Encoding.ASCII))
+                {
+                    //Read the Rebuild.Log file line by line.  Put error messages into slError list
+                    ReadRebuildLog(sRebuild, slError, Ereader);
                 }
                 file.Close();
                 //Reset progress bar for next process, if no errors are returned, still setup progress bar for 1 maximum
                 progressBar1.Value = 0;
-                progressBar1.Maximum = slError.Count + 1;
+                progressBar1.Maximum = slError.Count;
                 sLabel = "";
                 //Process each error line
                 foreach (string s in slError)
@@ -236,12 +349,16 @@ namespace WindowsFormsApplication1
                         //Get file code, move the file to cannot process repository, search for return files, and add items to listbox
                         sClientFile = GetFileCode(s);
                         RemoveClient(sClientFile);
-                        if (!listBox1.Items.Contains(sClientFile))
-                            listBox1.Items.Add(sClientFile);
+                        if (!slClients.Contains(sClientFile))
+                            slClients.Add(sClientFile);
                         if (!SearchSub(sClientFile))
                             sLabel = sLabel + sClientFile + "\n";
                     }
                     progressBar1.Value++;
+                }
+                foreach (string s in slClients)
+                {
+                    listBox1.Items.Add(s);
                 }
                 //Increment progress bar to completion, display appropriate message
                 progressBar1.Value++;
@@ -259,7 +376,96 @@ namespace WindowsFormsApplication1
             {
                 MessageBox.Show(ex.ToString());
             }
+        }
 
+        private async Task ReadLogAsync(string sRebuild, LinkedList<string> slError, StreamReader Ereader, IProgress<int> Progress)
+        {
+            //Set progress bar to expected max amount, and start at 0
+            await Task.Run(() =>
+            {
+                const int CoarseInterval = 16;
+                string line;
+                string sLabel = string.Empty;
+                bool bLineE = false;
+                int MaxLines, ProgressLine = 0;
+                int CoarseReport = 15;
+                MaxLines = File.ReadLines(sRebuild).Count();
+                while ((line = Ereader.ReadLine()) != null)
+                {
+                    // If flagged for second line is true, read a second line and append to current string
+                    if (bLineE == true)
+                    {
+                        sLabel = sLabel + line.Substring(9);
+                        slError.AddLast(sLabel);
+                        bLineE = false;
+                    }
+                    //Start reading line, only Error lines will be reported, this should not happen if as a second line
+                    if (line.Contains("ERROR: "))
+                    {
+                        sLabel = line;
+                        //If line is max length, set flag for second line
+                        if (sLabel.Length > 74)
+                            bLineE = true;
+                        sLabel = sLabel.Substring(9);
+                        //if flagged for second line, remove "-" at end of line, and hold off adding to string list
+                        if (bLineE)
+                        {
+                            if (sLabel[sLabel.Length - 1].Equals('-'))
+                                sLabel = sLabel.Substring(0, sLabel.Length - 1);
+                        }
+                        //if not flagged for a second line incoming, add line to string list
+                        else
+                            slError.AddLast(sLabel);
+                    }
+                    ProgressLine++;
+                    if (CoarseReport == CoarseInterval)
+                    {
+                        CoarseReport = 0;
+                        Progress.Report((ProgressLine * 100) / MaxLines);
+                    }
+                    CoarseReport++;
+                }
+            });
+        }
+
+        private void ReadRebuildLog(string sRebuild, LinkedList<string> slError, StreamReader Ereader)
+        {
+            string line;
+            string sLabel = string.Empty;
+            bool bLineE = false;
+            //Set progress bar to expected max amount, and start at 0
+            progressBar1.Value = 0;
+            progressBar1.Maximum = File.ReadLines(sRebuild).Count();
+            progressBar1.Visible = true;
+            while ((line = Ereader.ReadLine()) != null)
+            {
+                // If flagged for second line is true, read a second line and append to current string
+                if (bLineE == true)
+                {
+                    sLabel = sLabel + line.Substring(9);
+                    slError.AddLast(sLabel);
+                    bLineE = false;
+                }
+                //Start reading line, only Error lines will be reported, this should not happen if as a second line
+                if (line.Contains("ERROR: "))
+                {
+                    sLabel = line;
+                    //If line is max length, set flag for second line
+                    if (sLabel.Length > 74)
+                        bLineE = true;
+                    sLabel = sLabel.Substring(9);
+                    //if flagged for second line, remove "-" at end of line, and hold off adding to string list
+                    if (bLineE)
+                    {
+                        if (sLabel[sLabel.Length - 1].Equals('-'))
+                            sLabel = sLabel.Substring(0, sLabel.Length - 1);
+                    }
+                    //if not flagged for a second line incoming, add line to string list
+                    else
+                        slError.AddLast(sLabel);
+                }
+                progressBar1.Value++;
+            }
         }
 
         //Move clients unable to revise to repository for storage and out of production

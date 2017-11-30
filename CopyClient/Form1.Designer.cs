@@ -29,7 +29,7 @@
         private void InitializeComponent()
         {
             this.listBox1 = new System.Windows.Forms.ListBox();
-            this.button1 = new System.Windows.Forms.Button();
+            this.btnCopy = new System.Windows.Forms.Button();
             this.listBox2 = new System.Windows.Forms.ListBox();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
@@ -50,15 +50,15 @@
             this.listBox1.DragDrop += new System.Windows.Forms.DragEventHandler(this.listBox1_DragDrop);
             this.listBox1.DragEnter += new System.Windows.Forms.DragEventHandler(this.listBox1_DragEnter);
             // 
-            // button1
+            // btnCopy
             // 
-            this.button1.Location = new System.Drawing.Point(336, 40);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(76, 36);
-            this.button1.TabIndex = 2;
-            this.button1.Text = "Copy";
-            this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click);
+            this.btnCopy.Location = new System.Drawing.Point(336, 40);
+            this.btnCopy.Name = "btnCopy";
+            this.btnCopy.Size = new System.Drawing.Size(76, 36);
+            this.btnCopy.TabIndex = 2;
+            this.btnCopy.Text = "Copy";
+            this.btnCopy.UseVisualStyleBackColor = true;
+            this.btnCopy.Click += new System.EventHandler(this.btnCopy_Click);
             // 
             // listBox2
             // 
@@ -141,7 +141,7 @@
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.listBox2);
-            this.Controls.Add(this.button1);
+            this.Controls.Add(this.btnCopy);
             this.Controls.Add(this.listBox1);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Fixed3D;
             this.Name = "Form1";
@@ -154,7 +154,7 @@
 
         #endregion
         private System.Windows.Forms.ListBox listBox1;
-        private System.Windows.Forms.Button button1;
+        private System.Windows.Forms.Button btnCopy;
         private System.Windows.Forms.ListBox listBox2;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label2;
